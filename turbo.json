@@ -14,7 +14,8 @@
     "dev": {
       "dependsOn": ["^build"],
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "passThroughEnv": ["API_KEYS", "MODEL", "OLLAMA_*", "PORT", "API_URL"]
     }
   }
 }
