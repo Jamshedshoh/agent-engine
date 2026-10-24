@@ -48,7 +48,7 @@ export const defaultPolicy: MasterPolicy = {
   },
   output: {
     maxBodyBytes: 1024 * 1024,
-    allowedContentTypes: ["application/json", "text/plain"],
+    allowedContentTypes: ["application/json", "text/plain", "text/event-stream"],
     requiredFields: [],
     redactFields: ["password", "secret", "apiKey"],
   },

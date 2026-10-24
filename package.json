@@ -7,10 +7,11 @@
     "build": "turbo run build",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
-    "example": "turbo run dev --filter=@agent-engine/example",
+    "server": "turbo run dev --filter=@agent-engine/server",
+    "ui": "turbo run dev --filter=@agent-engine/ui",
     "container:engine": "podman build --target engine -t agent-engine-core .",
-    "container:example": "podman build --target example -t agent-engine-example .",
-    "container:build": "pnpm container:engine && pnpm container:example"
+    "container:ui": "podman build --target ui -t agent-engine-ui .",
+    "container:build": "pnpm container:engine && pnpm container:ui"
   },
   "devDependencies": {
     "turbo": "^2.5.0",

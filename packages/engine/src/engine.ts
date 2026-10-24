@@ -13,9 +13,11 @@ import { hashChain } from "./middleware/hashchain.ts";
 import { MemoryHashStore, type HashStore } from "./stores/memory.ts";
 import type { User } from "./types.ts";
 import { runAgent, type AgentDefinition } from "./agent/index.ts";
-import { ProviderError, type ModelProvider } from "./model/index.ts";
+import type { ModelProvider } from "./model/index.ts";
+import { agentRunError } from "./agent/httpErrors.ts";
+import { AgentService, type AgentServiceOptions } from "./services/agents.ts";
 import { z } from "zod";
-import { badRequest, HttpError } from "./errors.ts";
+import { badRequest, outputViolation } from "./errors.ts";
 
 export interface EngineOptions {
   policy?: PolicyOverrides;
@@ -85,6 +87,7 @@ export class Engine {
 
   get = (p: string, o: RouteOpts, h: Handler) => this.route("GET", p, o, h);
   post = (p: string, o: RouteOpts, h: Handler) => this.route("POST", p, o, h);
+  delete = (p: string, o: RouteOpts, h: Handler) => this.route("DELETE", p, o, h);
 
   /**
    * POST route that runs an agent on `{ prompt }`. The agent only sees tools the caller
@@ -115,22 +118,32 @@ export class Engine {
           });
           ctx.json(200, { ok: result.status === "completed", ...result });
         } catch (err) {
-          if (err instanceof HttpError) throw err;
-          if (err instanceof Error && err.name === "AbortError") throw new HttpError(504, "agent_timeout");
-          if (err instanceof ProviderError) {
-            console.error(`[${ctx.id}] upstream (${model.name})`, err.status, err.message);
-            throw new HttpError(502, "upstream_error", "Model provider error");
-          }
-          throw err;
+          throw agentRunError(err, ctx, model);
         }
       },
     );
+  }
+
+  /**
+   * Mounts the agent service under `prefix`: create, list, inspect, delete, prompt and listen
+   * to agents defined at runtime. Agents pick their tools by name from the `tools` catalog.
+   */
+  agentService(opts: AgentServiceOptions & { prefix?: string }): AgentService {
+    if (!this.model) throw new Error("Engine: pass a `model` (ModelProvider) in the options to mount the agent service");
+    const service = new AgentService(this.model, opts);
+    service.mount(this, opts.prefix ?? "/services/agents");
+    return service;
   }
 
   /** Raw Node request listener, usable with http.createServer or in tests. */
   handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const ctx = this.createContext(req, res);
     await this.pipeline(ctx);
+    // A streamed response already wrote its own head; errors after that can only end it.
+    if (ctx.streaming) {
+      if (!res.writableEnded) res.end();
+      return;
+    }
     const r = ctx.response ?? {
       status: 500,
       headers: { "content-type": "application/json" },
@@ -181,6 +194,16 @@ export class Engine {
       },
       text(status, data, headers = {}) {
         ctx.response = { status, data, headers: { "content-type": "text/plain", ...headers } };
+      },
+      stream(status, headers) {
+        const type = (headers["content-type"] ?? "").split(";")[0]!.trim().toLowerCase();
+        if (!ctx.policy.output.allowedContentTypes.includes(type)) throw outputViolation(`Content type not allowed: ${type}`);
+        const head: Record<string, string> = { ...headers, "x-request-id": ctx.id };
+        if (ctx.prevHash) head["x-prev-request-hash"] = ctx.prevHash;
+        if (ctx.hash) head["x-request-hash"] = ctx.hash;
+        res.writeHead(status, head);
+        ctx.streaming = true;
+        return res;
       },
     };
     return ctx;

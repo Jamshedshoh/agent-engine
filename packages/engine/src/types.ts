@@ -51,6 +51,13 @@ export interface Context {
   response?: EngineResponse;
   json(status: number, data: unknown, headers?: Record<string, string>): void;
   text(status: number, data: string, headers?: Record<string, string>): void;
+  /**
+   * Writes the head now and hands back the raw response for incremental writes (e.g. SSE).
+   * The content type must be allowed by the output policy; size and field rules do not apply.
+   */
+  stream(status: number, headers: Record<string, string> & { "content-type": string }): ServerResponse;
+  /** Set once stream() has written the head. */
+  streaming?: boolean;
 }
 
 export type Next = () => Promise<void>;

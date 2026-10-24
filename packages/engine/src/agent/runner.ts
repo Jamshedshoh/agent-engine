@@ -23,6 +23,11 @@ export interface AgentResult {
   refusalCategory?: string | null;
 }
 
+/** Progress reported while a run is in flight. */
+export type AgentEvent =
+  | { type: "turn"; turn: number; usage: AgentResult["usage"] }
+  | { type: "tool_call"; name: string; ok: boolean };
+
 const MAX_TOKENS_PER_TURN = 16_000;
 
 export async function runAgent(opts: {
@@ -30,6 +35,9 @@ export async function runAgent(opts: {
   model: ModelProvider;
   ctx: Context;
   prompt: string;
+  /** Earlier turns of the conversation, oldest first. */
+  history?: ChatMessage[];
+  onEvent?: (event: AgentEvent) => void;
 }): Promise<AgentResult> {
   const { agent, model, ctx } = opts;
   const limits = ctx.policy.agent;
@@ -39,7 +47,8 @@ export async function runAgent(opts: {
   const byName = new Map(tools.map((t) => [t.name, t]));
   const specs: ToolSpec[] = tools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.jsonSchema }));
 
-  const messages: ChatMessage[] = [{ role: "user", content: opts.prompt }];
+  const messages: ChatMessage[] = [...(opts.history ?? []), { role: "user", content: opts.prompt }];
+  const emit = opts.onEvent ?? (() => {});
   const result: AgentResult = { status: "completed", text: "", turns: 0, usage: { inputTokens: 0, outputTokens: 0 }, toolCalls: [] };
 
   const abort = new AbortController();
@@ -67,6 +76,7 @@ export async function runAgent(opts: {
       result.turns++;
       result.usage.inputTokens += response.usage.inputTokens;
       result.usage.outputTokens += response.usage.outputTokens;
+      emit({ type: "turn", turn: result.turns, usage: { ...result.usage } });
       result.text = response.content.flatMap((p) => (p.type === "text" ? [p.text] : [])).join("");
 
       if (response.stopReason === "refusal") {
@@ -78,7 +88,9 @@ export async function runAgent(opts: {
       messages.push({ role: "assistant", content: response.content, raw: response.raw });
 
       const calls = response.content.filter((p): p is ToolCallPart => p.type === "tool_call");
+      const before = result.toolCalls.length;
       const toolResults = await Promise.all(calls.map((c) => executeTool(c, byName, ctx, limits.maxToolResultBytes, result)));
+      for (const call of result.toolCalls.slice(before)) emit({ type: "tool_call", ...call });
       messages.push({ role: "user", content: toolResults });
     }
   } finally {

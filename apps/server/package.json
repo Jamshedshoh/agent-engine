@@ -1,0 +1,17 @@
+{
+  "name": "@agent-engine/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node src/index.ts",
+    "start": "node src/index.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test \"test/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@agent-engine/core": "workspace:*",
+    "@agent-engine/provider-ollama": "workspace:*",
+    "zod": "^4.6.7"
+  }
+}

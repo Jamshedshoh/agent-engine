@@ -1,31 +1,59 @@
 # podman compose up --build
 #
-# Both images come from the root Containerfile (one stage each). `engine` builds
-# the shared core image (packages/*) and exits; `example` is the service that runs.
+# All images come from the root Containerfile (one stage each). `engine` is the API
+# server (apps/server) on :3000; `ui` is the web app on :8080.
 services:
   engine:
     image: localhost/agent-engine-core:latest
     build:
       context: .
       target: engine
-    command: ["true"]
-    network_mode: none
-    restart: "no"
-
-  example:
-    image: localhost/agent-engine-example:latest
-    build:
-      context: .
-      target: example
-    depends_on:
-      engine:
-        condition: service_completed_successfully
     # pasta instead of a compose bridge network: netavark/nftables fails on older WSL kernels.
     network_mode: pasta
     ports:
       - "3000:3000"
     environment:
-      # Set MODEL=anthropic and ANTHROPIC_API_KEY (e.g. in .env) to use Claude.
-      MODEL: ${MODEL:-simulated}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Override any of these in .env (see .env.example).
+      MODEL: ${MODEL:-ollama}
+      # The ollama service below, through its published port (pasta maps 169.254.1.2 to the host).
+      OLLAMA_URL: ${OLLAMA_URL:-http://169.254.1.2:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:0.5b}
+      API_KEYS: ${API_KEYS:-dev-admin-key=alice:admin;dev-viewer-key=bob:viewer}
     restart: unless-stopped
+
+  ui:
+    image: localhost/agent-engine-ui:latest
+    build:
+      context: .
+      target: ui
+    # Reaches the engine through its published host port rather than `depends_on` or a shared
+    # network namespace: with podman those make container start order brittle.
+    network_mode: pasta
+    ports:
+      - "8080:8080"
+    environment:
+      # pasta maps 169.254.1.2 to the host. host.containers.internal resolves to an address that
+      # pasta does not route on this WSL setup.
+      API_URL: http://169.254.1.2:3000
+    restart: unless-stopped
+
+  # Local model server the engine uses (MODEL=ollama). Behind a profile so a plain `up`/`down`
+  # leaves it and its loaded model alone:
+  #   podman compose --profile ollama up -d ollama
+  # See docs/ollama-podman.md.
+  ollama:
+    image: docker.io/ollama/ollama:0.40.10
+    profiles: ["ollama"]
+    network_mode: pasta
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    environment:
+      OLLAMA_KEEP_ALIVE: 30m
+    restart: unless-stopped
+
+volumes:
+  # Shared with the standalone `podman run -v ollama:...` container, so models are pulled once.
+  ollama:
+    external: true
