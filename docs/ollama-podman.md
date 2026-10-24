@@ -3,7 +3,11 @@
 Runs [Ollama](https://ollama.com) in a podman container and serves open-weight models on
 `http://localhost:11434`, entirely offline once the model is downloaded.
 
-Verified on Windows 11 + podman 6.1.4 (WSL machine, pasta networking), Ollama 0.40.10, `qwen2.5:0.5b`.
+Verified on Windows 11 + podman 6.1.4 (WSL machine, pasta networking), `alpine/ollama:0.40.6`, `qwen2.5:0.5b`.
+
+The image is [`alpine/ollama`](https://hub.docker.com/r/alpine/ollama): about 86 MB, against ~5 GB for
+the official `ollama/ollama`. It's CPU-only, which suits this machine. It runs as root and stores
+models in `/root/.ollama` like the official image, so the two can share the same volume.
 
 > **In agent-engine:** this is the engine's model server. `packages/provider-ollama` talks to it, and
 > `podman compose` points the `engine` service at `http://169.254.1.2:11434` with `qwen2.5:0.5b`.
@@ -37,7 +41,7 @@ once.
 podman volume create ollama
 podman run -d --name ollama --network pasta -p 11434:11434 \
   -v ollama:/root/.ollama -e OLLAMA_KEEP_ALIVE=30m \
-  --restart unless-stopped docker.io/ollama/ollama:0.40.10
+  --restart unless-stopped docker.io/alpine/ollama:0.40.6
 ```
 
 **B. With this repo's compose file** (an opt-in `ollama` profile, so a plain `up` never starts it)
@@ -50,7 +54,7 @@ podman compose --profile ollama up -d ollama
 Check that it's up:
 
 ```bash
-curl -s localhost:11434/api/version             # {"version":"0.40.10"}
+curl -s localhost:11434/api/version             # {"version":"0.40.6"}
 podman logs ollama 2>&1 | grep "inference compute"   # library=cpu, or a GPU entry
 ```
 
@@ -118,10 +122,13 @@ podman volume rm ollama                              # delete all models (contai
 ```
 
 Pin the image to a version tag rather than `latest`, so a re-pull can't silently change the server.
-To update, change the tag (`0.40.10`), recreate the container, then remove the old image with
-`podman rmi docker.io/ollama/ollama:<old-tag>`. The models in the volume carry over.
+To update, change the tag (`0.40.6`; alpine/ollama tags track Ollama releases, often a few days
+behind), recreate the container, then remove the old image with `podman rmi docker.io/alpine/ollama:<old-tag>`. The models in the volume carry over.
 
 ## GPU (not verified on this machine)
+
+`alpine/ollama` has no GPU libraries. For a GPU, switch the image to the official
+`docker.io/ollama/ollama:<version>` (it uses the same volume), then:
 
 - **NVIDIA:** install the NVIDIA Container Toolkit in the podman machine, generate a CDI spec
   (`nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml`), then add `--device nvidia.com/gpu=all`

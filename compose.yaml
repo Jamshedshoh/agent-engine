@@ -42,7 +42,7 @@ services:
   #   podman compose --profile ollama up -d ollama
   # See docs/ollama-podman.md.
   ollama:
-    image: docker.io/ollama/ollama:0.40.10
+    image: docker.io/alpine/ollama:0.40.6
     profiles: ["ollama"]
     network_mode: pasta
     ports:
