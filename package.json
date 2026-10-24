@@ -1,0 +1,20 @@
+{
+  "name": "agent-req-handler",
+  "private": true,
+  "packageManager": "pnpm@11.21.0",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "example": "turbo run dev --filter=@agent-engine/example",
+    "container:engine": "podman build --target engine -t agent-engine-core .",
+    "container:example": "podman build --target example -t agent-engine-example .",
+    "container:build": "pnpm container:engine && pnpm container:example"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "typescript": "^5.9.0",
+    "@types/node": "^24.0.0"
+  }
+}
